@@ -1,0 +1,11 @@
+{
+  "name": "vibe-music",
+  "version": "1.0.0",
+  "description": "Vibe - Ad-Free Music Streaming",
+  "scripts": {
+    "install:all": "cd client && npm install && cd ../server && npm install",
+    "build": "cd client && npm run build",
+    "start": "node server/index.js",
+    "dev": "start cmd /c \"cd server && node index.js\" && cd client && npm run dev"
+  }
+}
