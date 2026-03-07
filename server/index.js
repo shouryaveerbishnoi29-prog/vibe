@@ -101,11 +101,11 @@ app.get('/api/search', async (req, res) => {
 
         try {
             await db.execute({
-                sql: \`
+                sql: `
                 INSERT INTO search_history (term, count, last_searched) 
                 VALUES (?, 1, CURRENT_TIMESTAMP)
                 ON CONFLICT(term) DO UPDATE SET count = count + 1, last_searched = CURRENT_TIMESTAMP
-                \`,
+                `,
                 args: [q.toLowerCase()]
             });
         } catch (err) { console.error("History logging error:", err.message); }
@@ -179,11 +179,11 @@ app.post('/api/listen', async (req, res) => {
         const downloadUrlStr = JSON.stringify(downloadUrl || []);
 
         await db.execute({
-            sql: \`
+            sql: `
             INSERT INTO listen_history (song_id, title, subtitle, image, downloadUrl, count, last_played)
             VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
             ON CONFLICT(song_id) DO UPDATE SET count = count + 1, last_played = CURRENT_TIMESTAMP
-            \`,
+            `,
             args: [id, title, subtitle, imgStr, downloadUrlStr]
         });
         res.json({ success: true });
@@ -255,8 +255,8 @@ app.get('/api/recommendations', async (req, res) => {
             if (mixedDeck.length > 0) {
                 cards.push({
                     type: 'mix',
-                    title: \`\${mainArtist} Mix\`,
-                    subtitle: \`Based on your recent listen: \${listen.title}\`,
+                    title: `${mainArtist} Mix`,
+                    subtitle: `Based on your recent listen: ${listen.title}`,
                     image: baseSong.image,
                     songs: mixedDeck
                 });
@@ -377,7 +377,7 @@ app.delete('/api/playlists/songs/:playlist_song_id', async (req, res) => {
 
 const clientDist = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDist));
-app.get('/*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
 });
 
