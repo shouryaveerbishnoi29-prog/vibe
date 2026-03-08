@@ -66,14 +66,19 @@ async function initDb() {
 initDb();
 
 // Map a YouTube video object to our standard formatting
-const mapYtSong = (v) => ({
-    id: v.videoId,
-    title: v.title,
-    subtitle: v.author?.name || 'Unknown Artist',
-    image: [{ quality: '500x500', url: v.image || v.thumbnail }],
-    downloadUrl: [{ quality: '320kbps', url: `/api/stream/${v.videoId}` }],
-    _rawTitle: (v.title || '').toLowerCase()
-});
+const SAAVN_BASE = 'https://jiosaavn-api-privatecvc2.vercel.app';
+const mapYtSong = (v) => {
+    const title = v.title || '';
+    const author = v.author?.name || 'Unknown Artist';
+    return {
+        id: v.videoId,
+        title: title,
+        subtitle: author,
+        image: [{ quality: '500x500', url: v.image || v.thumbnail }],
+        downloadUrl: [{ quality: '320kbps', url: `/api/stream/${v.videoId}?t=${encodeURIComponent(title)}&a=${encodeURIComponent(author)}` }],
+        _rawTitle: title.toLowerCase()
+    };
+};
 
 app.get('/api/search', async (req, res) => {
     try {
@@ -129,23 +134,41 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/stream/:id', async (req, res) => {
     try {
         const id = req.params.id;
-        if (!ytdl.validateID(id)) {
-            return res.status(400).send('Invalid video ID');
+        let title = req.query.t || '';
+        let author = req.query.a || '';
+
+        if (!title) {
+            const ytInfo = await yts({ videoId: id });
+            if (ytInfo) {
+                title = ytInfo.title;
+                author = ytInfo.author?.name || '';
+            }
         }
 
-        const info = await ytdl.getInfo(id);
-        const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
+        let cleanTitle = title.split('|')[0]
+            .replace(/[(\[].*?[)\]]/g, '')
+            .replace(/official video/i, '')
+            .replace(/music video/i, '')
+            .replace(/lyrical/i, '')
+            .trim();
         
-        if (!format) {
-            return res.status(404).send('No audio format found');
+        author = author.replace(/vevo/i, '').trim();
+        let query = `${cleanTitle} ${author}`.trim();
+
+        const result = await axios.get(`${SAAVN_BASE}/search/songs`, { params: { query: query, limit: 1 } });
+        const songs = result.data?.data?.results || [];
+
+        if (songs.length > 0) {
+            const exactSong = songs[0];
+            const dl = exactSong.downloadUrl.find(u => u.quality === '320kbps') || exactSong.downloadUrl[0];
+            if (dl && dl.link) {
+                return res.redirect(dl.link);
+            }
         }
 
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Transfer-Encoding', 'chunked');
-        
-        ytdl(id, { format }).pipe(res);
+        res.status(404).send('Audio stream mapped to NO_RESULTS');
     } catch (e) {
-        console.error(`Stream Error for ${req.params.id}:`, e.message);
+        console.error(`Stream Mapping Error for ${req.params.id}:`, e.message);
         if (!res.headersSent) res.status(500).send('Failed to stream audio');
     }
 });
