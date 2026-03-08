@@ -207,13 +207,20 @@ app.get('/api/stream/:id', async (req, res) => {
             try {
                 const result = await axios.get(`${SAAVN_BASE}/search/songs`, { 
                     params: { query: query, limit: 1 },
-                    timeout: 3000 
+                    timeout: 2500 
                 });
                 const songs = result.data?.data?.results || [];
                 if (songs.length > 0) {
                     const dl = songs[0].downloadUrl.find(u => u.quality === '320kbps') || songs[0].downloadUrl[0];
                     if (dl && dl.link) {
-                        return res.redirect(dl.link);
+                        const audioRes = await axios({
+                            method: 'get',
+                            url: dl.link,
+                            responseType: 'stream',
+                            timeout: 5000
+                        });
+                        res.setHeader('Content-Type', 'audio/mpeg');
+                        return audioRes.data.pipe(res);
                     }
                 }
             } catch (err) {
@@ -221,22 +228,17 @@ app.get('/api/stream/:id', async (req, res) => {
             }
         }
 
-        // 3. Last Resort Fallback (Mapping to a universal audio source if both fail)
-        // For now, we'll try one last 'ultra-fuzzy' search
-        const ultraFuzzy = cleanTitle.split(' ').slice(0, 3).join(' ');
-        const finalTry = await axios.get(`${SAAVN_BASE}/search/songs`, { params: { query: ultraFuzzy, limit: 1 } });
-        const finalSongs = finalTry.data?.data?.results || [];
-        if (finalSongs.length > 0) {
-            const dl = finalSongs[0].downloadUrl.find(u => u.quality === '320kbps') || finalSongs[0].downloadUrl[0];
-            if (dl && dl.link) return res.redirect(dl.link);
-        }
-
-        // 4. Absolute Final Fallback: Direct YouTube Stream Proxy
-        console.log(`Saavn mapping failed for ${id}, falling back to direct YT stream...`);
+        // 3. Absolute Final Fallback: Direct YouTube Stream Proxy
+        console.log(`Mapping failed for ${id}, falling back to direct YT stream...`);
         const stream = ytdl(id, {
             filter: 'audioonly',
             quality: 'highestaudio',
-            highWaterMark: 1 << 25 // 32MB buffer for smooth playback
+            highWaterMark: 1 << 25,
+            requestOptions: {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                }
+            }
         });
         
         res.setHeader('Content-Type', 'audio/mpeg');

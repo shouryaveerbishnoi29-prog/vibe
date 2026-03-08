@@ -24,25 +24,6 @@ export default function Sidebar() {
         </NavLink>
       </div>
 
-      <div className="desktop-only" style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
-        <div 
-          onClick={() => setPerformanceMode(!performanceMode)}
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '14px', 
-            padding: '10px 14px', 
-            borderRadius: '6px',
-            color: performanceMode ? 'var(--accent)' : 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontSize: '0.9rem',
-            fontWeight: 500
-          }}
-        >
-          <Zap size={22} fill={performanceMode ? 'var(--accent)' : 'none'} />
-          <span>{performanceMode ? 'High Speed On' : 'Speed Mode'}</span>
-        </div>
-      </div>
     </div>
   );
 }

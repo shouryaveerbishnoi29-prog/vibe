@@ -1,12 +1,15 @@
 import React, { useContext, useState } from 'react';
 import { PlayerContext } from '../context/PlayerContext';
-import { Play, Pause, SkipBack, SkipForward, ListPlus, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ListPlus, ListMusic, Zap } from 'lucide-react';
 import axios from 'axios';
 import QueuePanel from './QueuePanel';
 import PlaylistModal from './PlaylistModal';
 
 export default function Player() {
-  const { currentSong, isPlaying, playPause, progress, duration, seek, playNext, playPrev } = useContext(PlayerContext);
+  const { 
+    currentSong, isPlaying, playPause, progress, duration, seek, playNext, playPrev,
+    performanceMode, setPerformanceMode 
+  } = useContext(PlayerContext);
   const [showQueue, setShowQueue] = useState(false);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
@@ -31,6 +34,9 @@ export default function Player() {
             <div className="title">{currentSong.title}</div>
             <div className="artist">{currentSong.subtitle}</div>
           </div>
+          <button className="control-btn mobile-action-btn" onClick={() => setPerformanceMode(!performanceMode)} title="Speed Mode">
+            <Zap size={18} fill={performanceMode ? 'var(--accent)' : 'none'} />
+          </button>
           <button className="control-btn mobile-action-btn" onClick={() => setShowPlaylistModal(true)} title="Add to Playlist">
             <ListPlus size={20} />
           </button>
@@ -87,6 +93,9 @@ export default function Player() {
 
         {/* Desktop only: right side */}
         <div className="player-extra">
+          <button className="control-btn" onClick={() => setPerformanceMode(!performanceMode)} title="Speed Mode">
+            <Zap size={20} fill={performanceMode ? 'var(--accent)' : 'none'} />
+          </button>
           <button className="control-btn" onClick={() => setShowPlaylistModal(true)} title="Add to Playlist">
             <ListPlus size={22} />
           </button>
