@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const yts = require('yt-search');
 const axios = require('axios');
+const ytdl = require('@distube/ytdl-core');
 const { createClient } = require('@libsql/client');
 
 const app = express();
@@ -179,28 +180,68 @@ app.get('/api/stream/:id', async (req, res) => {
             }
         }
 
-        let cleanTitle = title.split('|')[0]
-            .replace(/[(\[].*?[)\]]/g, '')
-            .replace(/official video/i, '')
-            .replace(/music video/i, '')
-            .replace(/lyrical/i, '')
-            .trim();
-        
-        author = author.replace(/vevo/i, '').trim();
-        let query = `${cleanTitle} ${author}`.trim();
+        // 1. Clean the title for better mapping
+        const clean = (str) => {
+            return str.split('|')[0]
+                .split('-')[0]
+                .replace(/[(\[].*?[)\]]/g, '')
+                .replace(/official video/i, '')
+                .replace(/music video/i, '')
+                .replace(/lyrical/i, '')
+                .replace(/audio only/i, '')
+                .replace(/full song/i, '')
+                .replace(/video/i, '')
+                .trim();
+        };
 
-        const result = await axios.get(`${SAAVN_BASE}/search/songs`, { params: { query: query, limit: 1 } });
-        const songs = result.data?.data?.results || [];
+        const cleanTitle = clean(title);
+        const cleanAuthor = author.replace(/vevo/i, '').replace(/official/i, '').trim();
 
-        if (songs.length > 0) {
-            const exactSong = songs[0];
-            const dl = exactSong.downloadUrl.find(u => u.quality === '320kbps') || exactSong.downloadUrl[0];
-            if (dl && dl.link) {
-                return res.redirect(dl.link);
+        // 2. Try multiple search combinations on Saavn for maximum compatibility
+        const searchCombinations = [
+            `${cleanTitle} ${cleanAuthor}`,
+            cleanTitle
+        ];
+
+        for (const query of searchCombinations) {
+            try {
+                const result = await axios.get(`${SAAVN_BASE}/search/songs`, { 
+                    params: { query: query, limit: 1 },
+                    timeout: 3000 
+                });
+                const songs = result.data?.data?.results || [];
+                if (songs.length > 0) {
+                    const dl = songs[0].downloadUrl.find(u => u.quality === '320kbps') || songs[0].downloadUrl[0];
+                    if (dl && dl.link) {
+                        return res.redirect(dl.link);
+                    }
+                }
+            } catch (err) {
+                console.error(`Saavn attempt failed for ${query}:`, err.message);
             }
         }
 
-        res.status(404).send('Audio stream mapped to NO_RESULTS');
+        // 3. Last Resort Fallback (Mapping to a universal audio source if both fail)
+        // For now, we'll try one last 'ultra-fuzzy' search
+        const ultraFuzzy = cleanTitle.split(' ').slice(0, 3).join(' ');
+        const finalTry = await axios.get(`${SAAVN_BASE}/search/songs`, { params: { query: ultraFuzzy, limit: 1 } });
+        const finalSongs = finalTry.data?.data?.results || [];
+        if (finalSongs.length > 0) {
+            const dl = finalSongs[0].downloadUrl.find(u => u.quality === '320kbps') || finalSongs[0].downloadUrl[0];
+            if (dl && dl.link) return res.redirect(dl.link);
+        }
+
+        // 4. Absolute Final Fallback: Direct YouTube Stream Proxy
+        console.log(`Saavn mapping failed for ${id}, falling back to direct YT stream...`);
+        const stream = ytdl(id, {
+            filter: 'audioonly',
+            quality: 'highestaudio',
+            highWaterMark: 1 << 25 // 32MB buffer for smooth playback
+        });
+        
+        res.setHeader('Content-Type', 'audio/mpeg');
+        return stream.pipe(res);
+
     } catch (e) {
         console.error(`Stream Mapping Error for ${req.params.id}:`, e.message);
         if (!res.headersSent) res.status(500).send('Failed to stream audio');
