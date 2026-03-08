@@ -217,9 +217,15 @@ app.get('/api/stream/:id', async (req, res) => {
                             method: 'get',
                             url: dl.link,
                             responseType: 'stream',
-                            timeout: 5000
+                            timeout: 5000,
+                            headers: { 'Range': 'bytes=0-' } // Request byte range to help some proxies
                         });
+                        
+                        // Pass through headers for duration and seeking
+                        if (audioRes.headers['content-length']) res.setHeader('Content-Length', audioRes.headers['content-length']);
                         res.setHeader('Content-Type', 'audio/mpeg');
+                        res.setHeader('Accept-Ranges', 'bytes');
+                        
                         return audioRes.data.pipe(res);
                     }
                 }
@@ -230,19 +236,30 @@ app.get('/api/stream/:id', async (req, res) => {
 
         // 3. Absolute Final Fallback: Direct YouTube Stream Proxy
         console.log(`Mapping failed for ${id}, falling back to direct YT stream...`);
-        const stream = ytdl(id, {
-            filter: 'audioonly',
-            quality: 'highestaudio',
-            highWaterMark: 1 << 25,
-            requestOptions: {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                }
-            }
-        });
         
-        res.setHeader('Content-Type', 'audio/mpeg');
-        return stream.pipe(res);
+        try {
+            const info = await ytdl.getInfo(id);
+            const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
+            
+            if (format && format.contentLength) {
+                res.setHeader('Content-Length', format.contentLength);
+            }
+            res.setHeader('Content-Type', 'audio/mpeg');
+            res.setHeader('Accept-Ranges', 'bytes');
+
+            const stream = ytdl.downloadFromInfo(info, {
+                format: format,
+                highWaterMark: 1 << 25
+            });
+            
+            return stream.pipe(res);
+        } catch (ytErr) {
+            console.error("YTDL Error:", ytErr.message);
+            // Fallback to basic stream if getInfo fails
+            const stream = ytdl(id, { filter: 'audioonly', quality: 'highestaudio' });
+            res.setHeader('Content-Type', 'audio/mpeg');
+            return stream.pipe(res);
+        }
 
     } catch (e) {
         console.error(`Stream Mapping Error for ${req.params.id}:`, e.message);

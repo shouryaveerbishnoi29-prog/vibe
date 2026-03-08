@@ -97,16 +97,23 @@ export const PlayerProvider = ({ children }) => {
     useEffect(() => {
         const audio = audioRef.current;
         
-        const setAudioData = () => { setDuration(audio.duration); setProgress(audio.currentTime); };
+        const setAudioData = () => { 
+            if (audio.duration && audio.duration !== Infinity && !isNaN(audio.duration)) {
+                setDuration(audio.duration); 
+            }
+            setProgress(audio.currentTime); 
+        };
         const setAudioTime = () => setProgress(audio.currentTime);
         const handleEnded = () => handleNext();
 
-        audio.addEventListener('loadeddata', setAudioData);
+        audio.addEventListener('loadedmetadata', setAudioData);
+        audio.addEventListener('durationchange', setAudioData);
         audio.addEventListener('timeupdate', setAudioTime);
         audio.addEventListener('ended', handleEnded);
 
         return () => {
-            audio.removeEventListener('loadeddata', setAudioData);
+            audio.removeEventListener('loadedmetadata', setAudioData);
+            audio.removeEventListener('durationchange', setAudioData);
             audio.removeEventListener('timeupdate', setAudioTime);
             audio.removeEventListener('ended', handleEnded);
         };

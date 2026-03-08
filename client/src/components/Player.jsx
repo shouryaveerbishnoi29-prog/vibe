@@ -80,7 +80,7 @@ export default function Player() {
             >
               <div 
                 className="progress-fill" 
-                style={{ width: `${(progress / duration) * 100}%` }}
+                style={{ width: `${duration > 0 ? (progress / duration) * 100 : 0}%` }}
               />
             </div>
             <span>{formatTime(duration)}</span>
