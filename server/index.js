@@ -109,8 +109,18 @@ app.get('/api/search', async (req, res) => {
         const { q } = req.query;
         if (!q) return res.status(400).json({ success: false, message: 'Query string required' });
 
-        const ytResults = await cachedYts(q);
-        let results = ytResults.videos || [];
+        let results = [];
+        const youtubeUrlRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+        const match = q.match(youtubeUrlRegex);
+
+        if (match && match[1]) {
+            const videoId = match[1];
+            const ytInfo = await cachedYts({ videoId });
+            if (ytInfo) results = [ytInfo];
+        } else {
+            const ytResults = await cachedYts(q);
+            results = ytResults.videos || [];
+        }
         
         try {
             await db.execute({
