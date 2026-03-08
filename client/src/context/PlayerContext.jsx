@@ -12,10 +12,90 @@ export const PlayerProvider = ({ children }) => {
     const [queue, setQueue] = useState([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
     const [isShuffled, setIsShuffled] = useState(false);
-    const [isRadioMode, setIsRadioMode] = useState(false); // auto-generate queue
+    const [isRadioMode, setIsRadioMode] = useState(false);
+
+    // Refs to keep event listeners updated without re-binding them
+    const queueRef = useRef(queue);
+    const indexRef = useRef(currentIndex);
+    const radioModeRef = useRef(isRadioMode);
+
+    useEffect(() => { queueRef.current = queue; }, [queue]);
+    useEffect(() => { indexRef.current = currentIndex; }, [currentIndex]);
+    useEffect(() => { radioModeRef.current = isRadioMode; }, [isRadioMode]);
+
+    const play = useCallback(() => {
+        if (audioRef.current.src) {
+            audioRef.current.play().then(() => setIsPlaying(true)).catch(e => console.error("Play error:", e));
+        }
+    }, []);
+
+    const pause = useCallback(() => {
+        audioRef.current.pause();
+        setIsPlaying(false);
+    }, []);
+
+    const getBestFormatUrl = (downloadUrls) => {
+        if (!downloadUrls) return null;
+        const highest = downloadUrls.find(u => u.quality === '320kbps') || downloadUrls.find(u => u.quality === '160kbps') || downloadUrls[0];
+        return highest ? highest.url : null;
+    };
+
+    const startPlaying = useCallback((song) => {
+        const url = getBestFormatUrl(song.downloadUrl);
+        if (url) {
+            const audio = audioRef.current;
+            audio.pause();
+            audio.src = url;
+            audio.load(); // Explicit load
+            audio.play().then(() => {
+                setIsPlaying(true);
+                setCurrentSong(song);
+                axios.post('/api/listen', song).catch(e => console.error(e));
+            }).catch(e => {
+                console.error("Playback failed:", e);
+                // On mobile, sometimes we need to try again or user might need to tap
+                setIsPlaying(false);
+            });
+        }
+    }, []);
+
+    const generateRadioQueue = async (song) => {
+        try {
+            const artist = song.subtitle?.split(',')[0] || song.title;
+            const res = await axios.get(`/api/search?q=${encodeURIComponent(artist)}`);
+            const results = res.data?.data?.results || [];
+            return results.filter(s => s.id !== song.id).slice(0, 20);
+        } catch(e) {
+            console.error("Radio queue failed:", e.message);
+            return [];
+        }
+    };
+
+    const handleNext = useCallback(async () => {
+        const q = queueRef.current;
+        const idx = indexRef.current;
+        const radio = radioModeRef.current;
+
+        if (idx < q.length - 1) {
+            const nextIndex = idx + 1;
+            const nextSong = q[nextIndex];
+            setCurrentIndex(nextIndex);
+            startPlaying(nextSong);
+        } else if (radio && q[idx]) {
+            // Radio mode extension
+            const moreSongs = await generateRadioQueue(q[idx]);
+            if (moreSongs.length > 0) {
+                const newQ = [...q, ...moreSongs];
+                setQueue(newQ);
+                setCurrentIndex(q.length); 
+                startPlaying(moreSongs[0]);
+            }
+        }
+    }, [startPlaying]);
 
     useEffect(() => {
         const audio = audioRef.current;
+        
         const setAudioData = () => { setDuration(audio.duration); setProgress(audio.currentTime); };
         const setAudioTime = () => setProgress(audio.currentTime);
         const handleEnded = () => handleNext();
@@ -24,6 +104,14 @@ export const PlayerProvider = ({ children }) => {
         audio.addEventListener('timeupdate', setAudioTime);
         audio.addEventListener('ended', handleEnded);
 
+        return () => {
+            audio.removeEventListener('loadeddata', setAudioData);
+            audio.removeEventListener('timeupdate', setAudioTime);
+            audio.removeEventListener('ended', handleEnded);
+        };
+    }, [handleNext]);
+
+    useEffect(() => {
         if ('mediaSession' in navigator && currentSong) {
             const highResImage = currentSong.image?.find(img => img.quality === '500x500') || currentSong.image?.[currentSong.image.length - 1];
             navigator.mediaSession.metadata = new window.MediaMetadata({
@@ -33,60 +121,16 @@ export const PlayerProvider = ({ children }) => {
             });
             navigator.mediaSession.setActionHandler('play', play);
             navigator.mediaSession.setActionHandler('pause', pause);
-            navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+            navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
             navigator.mediaSession.setActionHandler('nexttrack', () => handleNext());
         }
+    }, [currentSong, play, pause, handleNext]);
 
-        return () => {
-            audio.removeEventListener('loadeddata', setAudioData);
-            audio.removeEventListener('timeupdate', setAudioTime);
-            audio.removeEventListener('ended', handleEnded);
-        };
-    }, [currentSong, queue, currentIndex, isRadioMode]);
-
-    const getBestFormatUrl = (downloadUrls) => {
-        if (!downloadUrls) return null;
-        const highest = downloadUrls.find(u => u.quality === '320kbps') || downloadUrls.find(u => u.quality === '160kbps') || downloadUrls[0];
-        return highest ? highest.url : null;
-    };
-
-    const startPlaying = (song) => {
-        const url = getBestFormatUrl(song.downloadUrl);
-        if (url) {
-            audioRef.current.src = url;
-            audioRef.current.play().then(() => {
-                setIsPlaying(true);
-                setCurrentSong(song);
-                axios.post('/api/listen', song).catch(e => console.error(e));
-            }).catch(e => console.error("Playback failed", e));
-        }
-    };
-
-    // Generate a radio queue of similar songs based on the artist
-    const generateRadioQueue = async (song) => {
-        try {
-            const artist = song.subtitle?.split(',')[0] || song.title;
-            const res = await axios.get(`/api/search?q=${encodeURIComponent(artist)}`);
-            const results = res.data?.data?.results || [];
-            // Filter out the current song itself and limit to 20
-            const radioSongs = results
-                .filter(s => s.id !== song.id)
-                .slice(0, 20);
-            return radioSongs;
-        } catch(e) {
-            console.error("Radio queue generation failed:", e.message);
-            return [];
-        }
-    };
-
-    // Main play function
     const playSong = async (song, playlistQueue = null) => {
         if (playlistQueue) {
-            // Playing from a playlist/list — use that as the queue
             setIsRadioMode(false);
             let finalQueue = [...playlistQueue];
             if (isShuffled) {
-                // Keep clicked song first, shuffle the rest
                 finalQueue = finalQueue.filter(s => s.id !== song.id);
                 finalQueue.sort(() => Math.random() - 0.5);
                 finalQueue.unshift(song);
@@ -96,7 +140,6 @@ export const PlayerProvider = ({ children }) => {
             setCurrentIndex(idx !== -1 ? idx : 0);
             startPlaying(song);
         } else {
-            // Playing a random solo song — enter radio mode
             setIsRadioMode(true);
             const radioSongs = await generateRadioQueue(song);
             const fullQueue = [song, ...radioSongs];
@@ -106,9 +149,7 @@ export const PlayerProvider = ({ children }) => {
         }
     };
 
-    const addToQueue = (song) => {
-        setQueue(prev => [...prev, song]);
-    };
+    const addToQueue = (song) => setQueue(prev => [...prev, song]);
 
     const removeFromQueue = (index) => {
         if (index === currentIndex) return;
@@ -117,9 +158,7 @@ export const PlayerProvider = ({ children }) => {
             newQ.splice(index, 1);
             return newQ;
         });
-        if (index < currentIndex) {
-            setCurrentIndex(prev => prev - 1);
-        }
+        if (index < currentIndex) setCurrentIndex(prev => prev - 1);
     };
 
     const reorderQueue = (fromIndex, toIndex) => {
@@ -129,18 +168,12 @@ export const PlayerProvider = ({ children }) => {
             newQ.splice(toIndex, 0, moved);
             return newQ;
         });
-        // Adjust currentIndex
-        if (fromIndex === currentIndex) {
-            setCurrentIndex(toIndex);
-        } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
-            setCurrentIndex(prev => prev - 1);
-        } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
-            setCurrentIndex(prev => prev + 1);
-        }
+        if (fromIndex === currentIndex) setCurrentIndex(toIndex);
+        else if (fromIndex < currentIndex && toIndex >= currentIndex) setCurrentIndex(prev => prev - 1);
+        else if (fromIndex > currentIndex && toIndex <= currentIndex) setCurrentIndex(prev => prev + 1);
     };
 
     const shufflePlay = (songs) => {
-        // Clear everything and play in random order
         setIsRadioMode(false);
         const shuffled = [...songs].sort(() => Math.random() - 0.5);
         setQueue(shuffled);
@@ -149,7 +182,6 @@ export const PlayerProvider = ({ children }) => {
     };
 
     const playSequential = (songs) => {
-        // Clear everything and play in order
         setIsRadioMode(false);
         setIsShuffled(false);
         setQueue([...songs]);
@@ -157,41 +189,14 @@ export const PlayerProvider = ({ children }) => {
         startPlaying(songs[0]);
     };
 
-    const toggleShuffle = () => {
-        setIsShuffled(prev => !prev);
-    };
+    const toggleShuffle = () => setIsShuffled(prev => !prev);
 
-    const playPause = () => {
-        if (!currentSong) return;
-        if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-        else { audioRef.current.play(); setIsPlaying(true); }
-    };
-    const play = () => { if(currentSong) { audioRef.current.play(); setIsPlaying(true); } };
-    const pause = () => { if(currentSong) { audioRef.current.pause(); setIsPlaying(false); } };
-
-    const handleNext = async () => {
-        if (currentIndex < queue.length - 1) {
-            const nextSong = queue[currentIndex + 1];
-            setCurrentIndex(currentIndex + 1);
-            startPlaying(nextSong);
-        } else if (isRadioMode && currentSong) {
-            // Auto-extend the queue with more radio songs
-            const moreSongs = await generateRadioQueue(currentSong);
-            if (moreSongs.length > 0) {
-                const newQ = [...queue, ...moreSongs];
-                setQueue(newQ);
-                setCurrentIndex(queue.length); // first of the new batch
-                startPlaying(moreSongs[0]);
-            }
-        }
-    };
-
-    const playNext = () => handleNext();
+    const playPause = () => isPlaying ? pause() : play();
 
     const playPrev = () => {
-        if (progress > 3) {
-            // If more than 3 seconds in, restart current song
-            audioRef.current.currentTime = 0;
+        const audio = audioRef.current;
+        if (audio.currentTime > 3) {
+            audio.currentTime = 0;
             setProgress(0);
         } else if (currentIndex > 0) {
             const prevSong = queue[currentIndex - 1];
@@ -208,7 +213,7 @@ export const PlayerProvider = ({ children }) => {
     return (
         <PlayerContext.Provider value={{
             currentSong, isPlaying, progress, duration,
-            playSong, playPause, playNext, playPrev, seek,
+            playSong, playPause, playNext: handleNext, playPrev, seek,
             queue, currentIndex,
             addToQueue, removeFromQueue, reorderQueue,
             shufflePlay, playSequential, isShuffled, toggleShuffle,
