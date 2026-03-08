@@ -24,7 +24,7 @@ export default function Sidebar() {
         </NavLink>
       </div>
 
-      <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
+      <div className="desktop-only" style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border-subtle)' }}>
         <div 
           onClick={() => setPerformanceMode(!performanceMode)}
           style={{ 
