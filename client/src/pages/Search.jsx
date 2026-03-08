@@ -6,6 +6,7 @@ import { PlayerContext } from '../context/PlayerContext';
 import { Search as SearchIcon, History, ListEnd, ListPlus } from 'lucide-react';
 
 export default function Search() {
+  const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [history, setHistory] = useState([]);
@@ -21,39 +22,47 @@ export default function Search() {
   }, []);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (query.trim()) {
-        setLoading(true);
-        axios.get(`/api/search?q=${query}`)
-          .then(res => {
-             if (res.data.success) {
-                setResults(res.data.data.results || []);
-             }
-             setLoading(false);
-          })
-          .catch(err => {
-             console.error(err);
-             setLoading(false);
-          });
-      } else {
-        setResults([]);
-      }
-    }, 500);
-
-    return () => clearTimeout(delayDebounceFn);
+    if (query.trim()) {
+      setLoading(true);
+      axios.get(`/api/search?q=${encodeURIComponent(query)}`)
+        .then(res => {
+            if (res.data.success) {
+              setResults(res.data.data.results || []);
+            }
+            setLoading(false);
+        })
+        .catch(err => {
+            console.error(err);
+            setLoading(false);
+        });
+    } else {
+      setResults([]);
+    }
   }, [query]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchInput.trim()) {
+      setQuery(searchInput.trim());
+    } else {
+      setQuery('');
+      setResults([]);
+    }
+  };
 
   return (
     <div className="fade-in">
-      <div className="search-container" style={{ position: 'sticky', top: 0, zIndex: 20, marginTop: 0 }}>
-        <SearchIcon size={20} color="var(--text-secondary)" />
+      <form onSubmit={handleSearch} className="search-container" style={{ position: 'sticky', top: 0, zIndex: 20, marginTop: 0 }}>
+        <button type="submit" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <SearchIcon size={20} color="var(--text-secondary)" />
+        </button>
         <input 
           type="text" 
           placeholder="What do you want to listen to?" 
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
-      </div>
+      </form>
 
       {loading && <p>Searching...</p>}
       

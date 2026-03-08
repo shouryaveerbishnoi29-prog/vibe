@@ -1,8 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const axios = require('axios');
 const path = require('path');
 const yts = require('yt-search');
+const ytdl = require('@distube/ytdl-core');
 const { createClient } = require('@libsql/client');
 
 const app = express();
@@ -65,40 +65,24 @@ async function initDb() {
 }
 initDb();
 
-// --- Proxy to Public JioSaavn API Wrapper ---
-const SAAVN_BASE = 'https://jiosaavn-api-privatecvc2.vercel.app';
+// Map a YouTube video object to our standard formatting
+const mapYtSong = (v) => ({
+    id: v.videoId,
+    title: v.title,
+    subtitle: v.author?.name || 'Unknown Artist',
+    image: [{ quality: '500x500', url: v.image || v.thumbnail }],
+    downloadUrl: [{ quality: '320kbps', url: `/api/stream/${v.videoId}` }],
+    _rawTitle: (v.title || '').toLowerCase()
+});
 
 app.get('/api/search', async (req, res) => {
     try {
         const { q } = req.query;
         if (!q) return res.status(400).json({ success: false, message: 'Query string required' });
 
-        let searchQuery = q;
-        try {
-            const ytResults = await yts(q);
-            if (ytResults && ytResults.videos.length > 0) {
-                let ytTitle = ytResults.videos[0].title;
-                ytTitle = ytTitle.split('|')[0]
-                    .replace(/full song:?/i, '')
-                    .replace(/official.*/i, '')
-                    .replace(/lyrical:?/i, '')
-                    .split(' - ')[0]
-                    .replace(/[\(\[].*?[\)\]]/g, '')
-                    .trim();
-                if (ytTitle.length > 2) {
-                    searchQuery = ytTitle;
-                }
-            }
-        } catch (err) { console.error("YT mapping error:", err.message); }
-
-        let response = await axios.get(`${SAAVN_BASE}/search/songs`, {
-            params: { query: searchQuery, limit: 30 }
-        });
-
-        if (!response.data?.data?.results?.length && searchQuery !== q) {
-            response = await axios.get(`${SAAVN_BASE}/search/songs`, { params: { query: q, limit: 30 } });
-        }
-
+        const ytResults = await yts(q);
+        let results = ytResults.videos || [];
+        
         try {
             await db.execute({
                 sql: `
@@ -110,24 +94,17 @@ app.get('/api/search', async (req, res) => {
             });
         } catch (err) { console.error("History logging error:", err.message); }
 
-        const results = response.data?.data?.results || [];
-        let formattedResults = results.map(song => ({
-            id: song.id,
-            title: song.name,
-            subtitle: song.primaryArtists,
-            image: (song.image || []).map(img => ({ quality: img.quality, url: img.link })),
-            downloadUrl: (song.downloadUrl || []).map(dl => ({ quality: dl.quality, url: dl.link })),
-            _rawTitle: song.name.toLowerCase()
-        }));
+        let formattedResults = results.map(mapYtSong);
 
         const penaltyWords = ['cover', 'lofi', 'reverb', 'slowed', 'remix', 'instrumental', 'unplugged', 'reprise', 'mashup', '8d', 'karaoke'];
         const qLower = q.toLowerCase();
+        const activePenaltyWords = penaltyWords.filter(w => !qLower.includes(w));
 
         formattedResults = formattedResults.sort((a, b) => {
             let aScore = 0;
             let bScore = 0;
 
-            penaltyWords.forEach(w => {
+            activePenaltyWords.forEach(w => {
                 if (a._rawTitle.includes(w)) aScore += 10;
                 if (b._rawTitle.includes(w)) bScore += 10;
             });
@@ -149,23 +126,41 @@ app.get('/api/search', async (req, res) => {
     }
 });
 
+app.get('/api/stream/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!ytdl.validateID(id)) {
+            return res.status(400).send('Invalid video ID');
+        }
+
+        const info = await ytdl.getInfo(id);
+        const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
+        
+        if (!format) {
+            return res.status(404).send('No audio format found');
+        }
+
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Transfer-Encoding', 'chunked');
+        
+        ytdl(id, { format }).pipe(res);
+    } catch (e) {
+        console.error(`Stream Error for ${req.params.id}:`, e.message);
+        if (!res.headersSent) res.status(500).send('Failed to stream audio');
+    }
+});
+
 app.get('/api/songs/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const response = await axios.get(`${SAAVN_BASE}/songs`, {
-            params: { ids: id }
-        });
+        const ytResults = await yts({ videoId: id });
+        if (!ytResults) {
+            return res.status(404).json({ success: false, error: 'Song not found' });
+        }
 
-        const results = response.data?.data || [];
-        const formattedResults = results.map(song => ({
-            id: song.id,
-            title: song.name,
-            subtitle: song.primaryArtists,
-            image: (song.image || []).map(img => ({ quality: img.quality, url: img.link })),
-            downloadUrl: (song.downloadUrl || []).map(dl => ({ quality: dl.quality, url: dl.link }))
-        }));
-
-        res.json({ success: true, data: formattedResults });
+        const song = mapYtSong(ytResults);
+        delete song._rawTitle;
+        res.json({ success: true, data: [song] });
     } catch (e) {
         console.error("Song Fetch Error:", e.message);
         res.status(500).json({ success: false, error: 'Failed to fetch song data' });
@@ -217,14 +212,6 @@ app.get('/api/recommendations', async (req, res) => {
         const cards = [];
 
         for (const listen of listens) {
-            const mapSong = song => ({
-                id: song.id,
-                title: song.name,
-                subtitle: song.primaryArtists,
-                image: (song.image || []).map(img => ({ quality: img.quality, url: img.link })),
-                downloadUrl: (song.downloadUrl || []).map(dl => ({ quality: dl.quality, url: dl.link }))
-            });
-
             const baseSong = {
                 id: listen.song_id,
                 title: listen.title,
@@ -237,12 +224,13 @@ app.get('/api/recommendations', async (req, res) => {
             let vibeSongs = [];
 
             if (mainArtist) {
-                const artistResponse = await axios.get(`${SAAVN_BASE}/search/songs`, { params: { query: mainArtist, limit: 15 } });
-                const artistRaw = artistResponse.data?.data?.results || [];
+                // Search youtube for artist to get vibe songs
+                const ytResults = await yts(`${mainArtist} song`);
+                const artistRaw = ytResults?.videos || [];
 
                 vibeSongs = artistRaw
-                    .filter(song => song.id !== listen.song_id)
-                    .map(mapSong)
+                    .filter(song => song.videoId !== listen.song_id)
+                    .map(mapYtSong)
                     .filter(song => {
                         const titleLower = song.title.toLowerCase();
                         return !['cover', 'lofi', 'remix', 'reverb', 'slowed', 'instrumental'].some(w => titleLower.includes(w));
@@ -250,7 +238,7 @@ app.get('/api/recommendations', async (req, res) => {
                     .slice(0, 9);
             }
 
-            const mixedDeck = [baseSong, ...vibeSongs];
+            const mixedDeck = [baseSong, ...vibeSongs].map(s => { delete s._rawTitle; return s; });
 
             if (mixedDeck.length > 0) {
                 cards.push({
