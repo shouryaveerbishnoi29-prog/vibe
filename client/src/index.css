@@ -189,6 +189,18 @@ p {
   background: var(--accent);
   border-radius: 0 3px 3px 0;
 }
+.performance-toggle {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0 !important;
+  padding-bottom: 16px !important;
+}
+.performance-toggle.active {
+  color: var(--accent) !important;
+}
+.performance-toggle span {
+  font-weight: 700;
+}
 
 /* ===== SONG GRID ===== */
 .song-grid {
@@ -599,6 +611,11 @@ p {
   .nav-item.active {
     color: var(--accent);
     background: transparent;
+  }
+  .performance-toggle {
+    margin-bottom: 0 !important;
+    border-bottom: none !important;
+    padding-bottom: 6px !important;
   }
   .desktop-only {
     display: none !important;
