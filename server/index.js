@@ -232,10 +232,9 @@ app.get('/api/recommendations', async (req, res) => {
     try {
         const listensRs = await db.execute('SELECT * FROM listen_history ORDER BY last_played DESC, count DESC LIMIT 8');
         const listens = listensRs.rows;
-
-        const cards = [];
-
-        for (const listen of listens) {
+        
+        // Execute all youtube searches in parallel to avoid massively slow loading times
+        const cards = await Promise.all(listens.map(async (listen) => {
             const baseSong = {
                 id: listen.song_id,
                 title: listen.title,
@@ -248,34 +247,38 @@ app.get('/api/recommendations', async (req, res) => {
             let vibeSongs = [];
 
             if (mainArtist) {
-                // Search youtube for artist to get vibe songs
-                const ytResults = await yts(`${mainArtist} song`);
-                const artistRaw = ytResults?.videos || [];
+                try {
+                    const ytResults = await yts(`${mainArtist} song`);
+                    const artistRaw = ytResults?.videos || [];
 
-                vibeSongs = artistRaw
-                    .filter(song => song.videoId !== listen.song_id)
-                    .map(mapYtSong)
-                    .filter(song => {
-                        const titleLower = song.title.toLowerCase();
-                        return !['cover', 'lofi', 'remix', 'reverb', 'slowed', 'instrumental'].some(w => titleLower.includes(w));
-                    })
-                    .slice(0, 9);
+                    vibeSongs = artistRaw
+                        .filter(song => song.videoId !== listen.song_id)
+                        .map(mapYtSong)
+                        .filter(song => {
+                            const titleLower = song.title.toLowerCase();
+                            return !['cover', 'lofi', 'remix', 'reverb', 'slowed', 'instrumental'].some(w => titleLower.includes(w));
+                        })
+                        .slice(0, 9);
+                } catch (err) {
+                    console.error("YTS fetch error in recommendations:", err.message);
+                }
             }
 
             const mixedDeck = [baseSong, ...vibeSongs].map(s => { delete s._rawTitle; return s; });
 
             if (mixedDeck.length > 0) {
-                cards.push({
+                return {
                     type: 'mix',
                     title: `${mainArtist} Mix`,
                     subtitle: `Based on your recent listen: ${listen.title}`,
                     image: baseSong.image,
                     songs: mixedDeck
-                });
+                };
             }
-        }
+            return null;
+        }));
 
-        res.json({ success: true, data: cards });
+        res.json({ success: true, data: cards.filter(Boolean) });
     } catch (e) {
         console.error("Recommendations Error:", e.message);
         res.status(500).json({ success: false, error: 'Failed to fetch recommendations' });
@@ -323,19 +326,26 @@ app.delete('/api/liked/:id', async (req, res) => {
 
 app.get('/api/playlists', async (req, res) => {
     try {
-        const playlistsRs = await db.execute('SELECT * FROM playlists');
-        const result = await Promise.all(playlistsRs.rows.map(async p => {
-            const songsRs = await db.execute({ sql: 'SELECT * FROM playlist_songs WHERE playlist_id = ?', args: [p.id] });
-            p.songs = songsRs.rows.map(s => ({
-                id: s.song_id,
-                title: s.title,
-                subtitle: s.subtitle,
-                image: JSON.parse(s.image),
-                downloadUrl: JSON.parse(s.downloadUrl),
-                playlist_song_id: s.id
-            }));
+        // Fetch all playlists and all playlist songs in just 2 queries total instead of N+1
+        const [playlistsRs, songsRs] = await Promise.all([
+            db.execute('SELECT * FROM playlists'),
+            db.execute('SELECT * FROM playlist_songs')
+        ]);
+        
+        const allSongs = songsRs.rows;
+        const result = playlistsRs.rows.map(p => {
+            p.songs = allSongs
+                .filter(s => s.playlist_id === p.id)
+                .map(s => ({
+                    id: s.song_id,
+                    title: s.title,
+                    subtitle: s.subtitle,
+                    image: JSON.parse(s.image),
+                    downloadUrl: JSON.parse(s.downloadUrl),
+                    playlist_song_id: s.id
+                }));
             return p;
-        }));
+        });
         res.json({ success: true, data: result });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
