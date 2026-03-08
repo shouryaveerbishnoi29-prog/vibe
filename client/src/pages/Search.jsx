@@ -53,7 +53,7 @@ export default function Search() {
 
   return (
     <div className="fade-in">
-      <form onSubmit={handleSearch} className="search-container" style={{ position: 'sticky', top: 0, zIndex: 20, marginTop: 0 }}>
+      <form onSubmit={handleSearch} className="search-container" style={{ position: 'sticky', top: 'var(--header-height)', zIndex: 20, marginTop: 0 }}>
         <button type="submit" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <SearchIcon size={20} color="var(--text-secondary)" />
         </button>
