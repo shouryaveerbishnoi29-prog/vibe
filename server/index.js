@@ -230,57 +230,64 @@ app.get('/api/history/listens', async (req, res) => {
 
 app.get('/api/recommendations', async (req, res) => {
     try {
-        const listensRs = await db.execute('SELECT * FROM listen_history ORDER BY last_played DESC, count DESC LIMIT 8');
-        const listens = listensRs.rows;
+        const listensRs = await db.execute('SELECT * FROM listen_history ORDER BY last_played DESC, count DESC LIMIT 5');
+        let listens = listensRs.rows;
         
-        // Execute all youtube searches in parallel to avoid massively slow loading times
+        // If NO history, fetch some trending stuff so home isn't empty
+        if (listens.length === 0) {
+            const trending = await yts('trending songs 2024');
+            const top5 = trending.videos.slice(0, 5);
+            const cards = top5.map(v => ({
+                type: 'mix',
+                title: 'Trending Vibe',
+                subtitle: v.title,
+                image: [{ quality: '500x500', url: v.image || v.thumbnail }],
+                songs: [mapYtSong(v)]
+            }));
+            return res.json({ success: true, data: cards });
+        }
+
         const cards = await Promise.all(listens.map(async (listen) => {
-            const baseSong = {
-                id: listen.song_id,
-                title: listen.title,
-                subtitle: listen.subtitle,
-                image: JSON.parse(listen.image),
-                downloadUrl: JSON.parse(listen.downloadUrl)
-            };
+            try {
+                const baseSong = {
+                    id: listen.song_id,
+                    title: listen.title,
+                    subtitle: listen.subtitle,
+                    image: JSON.parse(listen.image),
+                    downloadUrl: JSON.parse(listen.downloadUrl)
+                };
 
-            const mainArtist = listen.subtitle?.split(',')[0] || listen.title;
-            let vibeSongs = [];
+                const mainArtist = listen.subtitle?.split(',')[0] || listen.title;
+                const ytResults = await yts(`${mainArtist} song`);
+                const artistRaw = ytResults?.videos || [];
 
-            if (mainArtist) {
-                try {
-                    const ytResults = await yts(`${mainArtist} song`);
-                    const artistRaw = ytResults?.videos || [];
+                const vibeSongs = artistRaw
+                    .filter(song => song.videoId !== listen.song_id)
+                    .map(mapYtSong)
+                    .filter(song => {
+                        const titleLower = song.title.toLowerCase();
+                        return !['cover', 'lofi', 'remix', 'reverb', 'slowed', 'instrumental'].some(w => titleLower.includes(w));
+                    })
+                    .slice(0, 7);
 
-                    vibeSongs = artistRaw
-                        .filter(song => song.videoId !== listen.song_id)
-                        .map(mapYtSong)
-                        .filter(song => {
-                            const titleLower = song.title.toLowerCase();
-                            return !['cover', 'lofi', 'remix', 'reverb', 'slowed', 'instrumental'].some(w => titleLower.includes(w));
-                        })
-                        .slice(0, 9);
-                } catch (err) {
-                    console.error("YTS fetch error in recommendations:", err.message);
-                }
-            }
+                const mixedDeck = [baseSong, ...vibeSongs].map(s => { delete s._rawTitle; return s; });
 
-            const mixedDeck = [baseSong, ...vibeSongs].map(s => { delete s._rawTitle; return s; });
-
-            if (mixedDeck.length > 0) {
                 return {
                     type: 'mix',
                     title: `${mainArtist} Mix`,
-                    subtitle: `Based on your recent listen: ${listen.title}`,
+                    subtitle: `Personalized for you`,
                     image: baseSong.image,
                     songs: mixedDeck
                 };
+            } catch (err) {
+                console.error("YTS fetch error in recommendations:", err.message);
+                return null;
             }
-            return null;
         }));
 
         res.json({ success: true, data: cards.filter(Boolean) });
     } catch (e) {
-        console.error("Recommendations Error:", e.message);
+        console.error("Recommendations Error:", e.stack);
         res.status(500).json({ success: false, error: 'Failed to fetch recommendations' });
     }
 });

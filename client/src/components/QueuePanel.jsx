@@ -1,11 +1,13 @@
 import React, { useContext, useState, useRef } from 'react';
 import { PlayerContext } from '../context/PlayerContext';
-import { X, Trash2, GripVertical, Radio } from 'lucide-react';
+import { X, Trash2, GripVertical, Radio, ListPlus } from 'lucide-react';
+import PlaylistModal from './PlaylistModal';
 
 export default function QueuePanel({ onClose }) {
   const { queue, currentIndex, playSong, removeFromQueue, reorderQueue, isRadioMode } = useContext(PlayerContext);
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
+  const [modalSong, setModalSong] = useState(null);
   const touchStartY = useRef(null);
   const touchStartIdx = useRef(null);
   const itemRefs = useRef({});
@@ -13,7 +15,7 @@ export default function QueuePanel({ onClose }) {
   const upcomingSongs = queue.slice(currentIndex + 1);
   const currentSong = queue[currentIndex];
 
-  // --- Pointer/Mouse drag ---
+  // ... (drag handlers unchanged)
   const handleDragStart = (e, realIdx) => {
     setDragIndex(realIdx);
     e.dataTransfer.effectAllowed = 'move';
@@ -32,7 +34,6 @@ export default function QueuePanel({ onClose }) {
   };
   const handleDragEnd = () => { setDragIndex(null); setOverIndex(null); };
 
-  // --- Touch drag ---
   const handleTouchStart = (e, realIdx) => {
     touchStartY.current = e.touches[0].clientY;
     touchStartIdx.current = realIdx;
@@ -42,7 +43,6 @@ export default function QueuePanel({ onClose }) {
   const handleTouchMove = (e, relIdx) => {
     if (touchStartIdx.current === null) return;
     const touchY = e.touches[0].clientY;
-    // Find which item we're over
     for (const [key, ref] of Object.entries(itemRefs.current)) {
       if (ref) {
         const rect = ref.getBoundingClientRect();
@@ -87,12 +87,20 @@ export default function QueuePanel({ onClose }) {
                 <div style={{ color: 'var(--text-primary)', fontWeight: '600', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentSong.title}</div>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>{currentSong.subtitle}</div>
               </div>
+              <button 
+                  className="action-btn" 
+                  onClick={(e) => { e.stopPropagation(); setModalSong(currentSong); }}
+                  style={{ padding: '8px' }}
+                  title="Add to Playlist"
+              >
+                 <ListPlus size={18} />
+              </button>
             </div>
           </div>
         )}
 
         <div>
-          <p style={{ fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '10px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
+           <p style={{ fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '10px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1.5px' }}>
             Next Up · {upcomingSongs.length} {isRadioMode ? '(auto-generated)' : 'songs'}
           </p>
           
@@ -143,20 +151,32 @@ export default function QueuePanel({ onClose }) {
                         <div style={{ color: 'var(--text-secondary)', fontSize: '0.7rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.subtitle}</div>
                       </div>
                     </div>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); removeFromQueue(realIndex); }} 
-                      style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', flexShrink: 0 }}
-                      title="Remove"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                        <button 
+                            className="action-btn" 
+                            onClick={(e) => { e.stopPropagation(); setModalSong(song); }}
+                            style={{ padding: '6px' }}
+                            title="Add to Playlist"
+                        >
+                            <ListPlus size={16} />
+                        </button>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); removeFromQueue(realIndex); }} 
+                            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '6px', flexShrink: 0 }}
+                            title="Remove"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
         </div>
+        {modalSong && <PlaylistModal song={modalSong} onClose={() => setModalSong(null)} />}
       </div>
     </div>
   );
 }
+

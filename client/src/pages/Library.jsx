@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { PlayerContext } from '../context/PlayerContext';
-import { Play, Trash2, Heart, List, X, Shuffle, ListEnd } from 'lucide-react';
+import { Play, Trash2, Heart, List, X, Shuffle, ListEnd, ListPlus } from 'lucide-react';
+import PlaylistModal from '../components/PlaylistModal';
 
 export default function Library() {
   const [likedSongs, setLikedSongs] = useState([]);
   const [playlists, setPlaylists] = useState([]);
+  const [modalSong, setModalSong] = useState(null);
   const { playSong, shufflePlay, playSequential, addToQueue } = useContext(PlayerContext);
 
   useEffect(() => {
@@ -96,7 +98,10 @@ export default function Library() {
                     <button className="action-btn" onClick={(e) => { e.stopPropagation(); addToQueue(song); }} title="Add to Queue">
                       <ListEnd size={18} />
                     </button>
-                    <button className="action-btn" onClick={(e) => removeSong(song.id, e)}>
+                    <button className="action-btn" onClick={(e) => { e.stopPropagation(); setModalSong(song); }} title="Add to Playlist">
+                      <ListPlus size={18} />
+                    </button>
+                    <button className="action-btn" onClick={(e) => removeSong(song.id, e)} title="Remove from Liked">
                       <Trash2 size={18} />
                     </button>
                   </div>
@@ -150,6 +155,9 @@ export default function Library() {
                       <button className="action-btn" onClick={(e) => { e.stopPropagation(); addToQueue(song); }} title="Add to Queue">
                         <ListEnd size={18} />
                       </button>
+                      <button className="action-btn" onClick={(e) => { e.stopPropagation(); setModalSong(song); }} title="Add to Playlist">
+                        <ListPlus size={18} />
+                      </button>
                       <button className="action-btn" onClick={(e) => removePlaylistSong(song.playlist_song_id, e)} title="Remove from Playlist">
                         <Trash2 size={18} />
                       </button>
@@ -161,6 +169,7 @@ export default function Library() {
           )}
         </div>
       ))}
+      {modalSong && <PlaylistModal song={modalSong} onClose={() => { setModalSong(null); fetchPlaylists(); fetchLiked(); }} />}
     </div>
   );
 }
