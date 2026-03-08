@@ -12,6 +12,7 @@ export default function Search() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalSong, setModalSong] = useState(null);
+  const [hideThumbs, setHideThumbs] = useState(true);
   const { playSong, addToQueue } = useContext(PlayerContext);
 
   useEffect(() => {
@@ -67,7 +68,17 @@ export default function Search() {
       {loading && <p>Searching...</p>}
       
       {!loading && query && results.length > 0 && (
-        <SongList title="Top Results" songs={results} />
+        <div>
+           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <button 
+                onClick={() => setHideThumbs(!hideThumbs)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                {hideThumbs ? 'Show Thumbnails' : 'Hide Thumbnails (Faster)'}
+              </button>
+           </div>
+           <SongList title="Results" songs={results} layout="list" hideThumbnails={hideThumbs} />
+        </div>
       )}
       
       {!loading && !query && history.length > 0 && (

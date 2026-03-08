@@ -125,33 +125,33 @@ app.get('/api/search', async (req, res) => {
 
         let formattedResults = results.map(mapYtSong);
 
-        const penaltyWords = ['cover', 'lofi', 'reverb', 'slowed', 'remix', 'instrumental', 'unplugged', 'reprise', 'mashup', '8d', 'karaoke'];
-        const qLower = q.toLowerCase();
-        const activePenaltyWords = penaltyWords.filter(w => !qLower.includes(w));
-
+        // Advanced Sorting for higher accuracy
+        const qLower = q.toLowerCase().trim();
         formattedResults = formattedResults.sort((a, b) => {
-            let aScore = 0;
-            let bScore = 0;
+            const aTitle = a.title.toLowerCase();
+            const bTitle = b.title.toLowerCase();
 
-            activePenaltyWords.forEach(w => {
-                if (a._rawTitle.includes(w)) aScore += 10;
-                if (b._rawTitle.includes(w)) bScore += 10;
-            });
+            // 1. Exact or Very Close Matches (highest priority)
+            const aExact = aTitle.includes(qLower);
+            const bExact = bTitle.includes(qLower);
+            if (aExact && !bExact) return -1;
+            if (bExact && !aExact) return 1;
 
-            if (a._rawTitle === qLower) aScore -= 20;
-            if (b._rawTitle === qLower) bScore -= 20;
-            if (a._rawTitle.startsWith(qLower)) aScore -= 5;
-            if (b._rawTitle.startsWith(qLower)) bScore -= 5;
+            // 2. Penalty Words (covers, remixes etc) unless explicitly searched for
+            const penaltyWords = ['cover', 'lofi', 'reverb', 'slowed', 'remix', 'instrumental', 'unplugged', 'reprise', 'mashup', '8d', 'karaoke', 'lyric'];
+            const activePenaltyWords = penaltyWords.filter(w => !qLower.includes(w));
+            
+            let aPenalty = activePenaltyWords.some(w => aTitle.includes(w)) ? 1 : 0;
+            let bPenalty = activePenaltyWords.some(w => bTitle.includes(w)) ? 1 : 0;
+            if (aPenalty !== bPenalty) return aPenalty - bPenalty;
 
-            return aScore - bScore;
+            return aTitle.length - bTitle.length;
         });
 
-        formattedResults.forEach(r => delete r._rawTitle);
-
-        res.json({ success: true, data: { results: formattedResults } });
+        res.json({ success: true, data: { results: formattedResults.slice(0, 30) } });
     } catch (e) {
-        console.error("Search Error:", e.message);
-        res.status(500).json({ success: false, error: 'Failed to fetch search results' });
+        console.error("Search Error:", e.stack);
+        res.status(500).json({ success: false, error: 'Search failed' });
     }
 });
 

@@ -13,6 +13,7 @@ export const PlayerProvider = ({ children }) => {
     const [currentIndex, setCurrentIndex] = useState(-1);
     const [isShuffled, setIsShuffled] = useState(false);
     const [isRadioMode, setIsRadioMode] = useState(false);
+    const [performanceMode, setPerformanceMode] = useState(false);
 
     // Refs to keep event listeners updated without re-binding them
     const queueRef = useRef(queue);
@@ -217,7 +218,7 @@ export const PlayerProvider = ({ children }) => {
             queue, currentIndex,
             addToQueue, removeFromQueue, reorderQueue,
             shufflePlay, playSequential, isShuffled, toggleShuffle,
-            isRadioMode
+            isRadioMode, performanceMode, setPerformanceMode
         }}>
             {children}
         </PlayerContext.Provider>

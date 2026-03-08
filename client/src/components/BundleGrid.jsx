@@ -1,10 +1,10 @@
 import React, { useState, useContext } from 'react';
 import { PlayerContext } from '../context/PlayerContext';
-import { Play, X, ListEnd, ListPlus } from 'lucide-react';
+import { Play, X, ListEnd, ListPlus, Music } from 'lucide-react';
 import PlaylistModal from './PlaylistModal';
 
 export default function BundleGrid({ bundles }) {
-  const { playSong, addToQueue } = useContext(PlayerContext);
+  const { playSong, addToQueue, performanceMode } = useContext(PlayerContext);
   const [selectedBundle, setSelectedBundle] = useState(null);
   const [modalSong, setModalSong] = useState(null);
 
@@ -19,7 +19,13 @@ export default function BundleGrid({ bundles }) {
           return (
             <div key={idx} className="bundle-card fade-in" onClick={() => setSelectedBundle(bundle)}>
               <div className="bundle-image-wrapper">
-                {coverImage && <img src={coverImage.url} alt={bundle.title} className="bundle-image" />}
+                {!performanceMode && coverImage ? (
+                  <img src={coverImage.url} alt={bundle.title} className="bundle-image" loading="lazy" />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', background: 'var(--bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Music size={40} color="var(--text-secondary)" />
+                  </div>
+                )}
                 <div className="play-on-hover bundle-play">
                   <Play size={28} style={{ marginLeft: 4 }} color="black" fill="black" />
                 </div>
@@ -38,7 +44,13 @@ export default function BundleGrid({ bundles }) {
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                   {selectedBundle.image?.[0] && <img src={selectedBundle.image[0].url} style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover' }} alt="Mix Cover" />}
+                   {!performanceMode && selectedBundle.image?.[0] ? (
+                     <img src={selectedBundle.image[0].url} style={{ width: 60, height: 60, borderRadius: 8, objectFit: 'cover' }} alt="Mix Cover" />
+                   ) : (
+                    <div style={{ width: 60, height: 60, borderRadius: 8, background: 'var(--bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Music size={24} color="var(--text-secondary)" />
+                    </div>
+                   )}
                    <div>
                        <h2 style={{ marginBottom: 4 }}>{selectedBundle.title}</h2>
                        <p>{selectedBundle.subtitle}</p>
@@ -65,7 +77,13 @@ export default function BundleGrid({ bundles }) {
                      <div key={song.id} className="song-list-row">
                         <span className="index">{index + 1}</span>
                         <div className="info-col" style={{ cursor: 'pointer' }} onClick={() => { playSong(song, selectedBundle.songs); setSelectedBundle(null); }}>
-                           {image && <img src={image.url} alt={song.title} />}
+                           {!performanceMode && image ? (
+                             <img src={image.url} alt={song.title} loading="lazy" />
+                           ) : (
+                            <div style={{ width: 40, height: 40, borderRadius: 4, background: 'var(--bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '12px' }}>
+                              <Music size={16} color="var(--text-secondary)" />
+                            </div>
+                           )}
                            <div style={{ minWidth: 0 }}>
                              <div style={{ color: 'var(--text-primary)', fontWeight: '500', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.title}</div>
                              <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.subtitle}</div>
