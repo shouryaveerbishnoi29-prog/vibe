@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const yts = require('yt-search');
+const axios = require('axios');
 const ytdl = require('@distube/ytdl-core');
 const { createClient } = require('@libsql/client');
 
