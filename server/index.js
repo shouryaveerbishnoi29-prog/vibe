@@ -66,11 +66,35 @@ async function initDb() {
 }
 initDb();
 
+// In-memory cache to make the app lightning fast by avoiding redundant YT API calls
+const searchCache = new Map();
+const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+
+async function cachedYts(query) {
+    const cacheKey = JSON.stringify(query);
+    if (searchCache.has(cacheKey)) {
+        const entry = searchCache.get(cacheKey);
+        if (Date.now() - entry.timestamp < CACHE_TTL) {
+            return entry.data;
+        }
+    }
+    const results = await yts(query);
+    searchCache.set(cacheKey, { data: results, timestamp: Date.now() });
+    
+    // Cleanup old cache entries if it gets too big
+    if (searchCache.size > 200) {
+        const firstKey = searchCache.keys().next().value;
+        searchCache.delete(firstKey);
+    }
+    
+    return results;
+}
+
 // Map a YouTube video object to our standard formatting
 const SAAVN_BASE = 'https://jiosaavn-api-privatecvc2.vercel.app';
 const mapYtSong = (v) => {
     const title = v.title || '';
-    const author = v.author?.name || 'Unknown Artist';
+    const author = (typeof v.author === 'string' ? v.author : v.author?.name) || 'Unknown Artist';
     return {
         id: v.videoId,
         title: title,
@@ -86,7 +110,7 @@ app.get('/api/search', async (req, res) => {
         const { q } = req.query;
         if (!q) return res.status(400).json({ success: false, message: 'Query string required' });
 
-        const ytResults = await yts(q);
+        const ytResults = await cachedYts(q);
         let results = ytResults.videos || [];
         
         try {
@@ -139,7 +163,7 @@ app.get('/api/stream/:id', async (req, res) => {
         let author = req.query.a || '';
 
         if (!title) {
-            const ytInfo = await yts({ videoId: id });
+            const ytInfo = await cachedYts({ videoId: id });
             if (ytInfo) {
                 title = ytInfo.title;
                 author = ytInfo.author?.name || '';
@@ -177,7 +201,7 @@ app.get('/api/stream/:id', async (req, res) => {
 app.get('/api/songs/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const ytResults = await yts({ videoId: id });
+        const ytResults = await cachedYts({ videoId: id });
         if (!ytResults) {
             return res.status(404).json({ success: false, error: 'Song not found' });
         }
@@ -235,7 +259,7 @@ app.get('/api/recommendations', async (req, res) => {
         
         // If NO history, fetch some trending stuff so home isn't empty
         if (listens.length === 0) {
-            const trending = await yts('trending songs 2024');
+            const trending = await cachedYts('trending songs 2024');
             const top5 = trending.videos.slice(0, 5);
             const cards = top5.map(v => ({
                 type: 'mix',
@@ -258,7 +282,7 @@ app.get('/api/recommendations', async (req, res) => {
                 };
 
                 const mainArtist = listen.subtitle?.split(',')[0] || listen.title;
-                const ytResults = await yts(`${mainArtist} song`);
+                const ytResults = await cachedYts(`${mainArtist} song`);
                 const artistRaw = ytResults?.videos || [];
 
                 const vibeSongs = artistRaw

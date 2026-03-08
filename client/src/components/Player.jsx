@@ -1,12 +1,14 @@
 import React, { useContext, useState } from 'react';
 import { PlayerContext } from '../context/PlayerContext';
-import { Play, Pause, SkipBack, SkipForward, Heart, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ListPlus, ListMusic } from 'lucide-react';
 import axios from 'axios';
 import QueuePanel from './QueuePanel';
+import PlaylistModal from './PlaylistModal';
 
 export default function Player() {
   const { currentSong, isPlaying, playPause, progress, duration, seek, playNext, playPrev } = useContext(PlayerContext);
   const [showQueue, setShowQueue] = useState(false);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
   if (!currentSong) return null;
 
@@ -17,29 +19,20 @@ export default function Player() {
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
-  const likeSong = async () => {
-    try {
-      await axios.post('/api/liked', currentSong);
-      alert('Added to Liked Songs');
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   const image = currentSong.image?.find(img => img.quality === '150x150') || currentSong.image?.[0];
 
   return (
     <>
       <div className="player-bar fade-in-up">
-        {/* Top row: song info + like + queue */}
+        {/* Top row: song info + playlist + queue */}
         <div className="player-info">
           {image && <img src={image.url} alt="Cover" />}
           <div className="player-info-text">
             <div className="title">{currentSong.title}</div>
             <div className="artist">{currentSong.subtitle}</div>
           </div>
-          <button className="control-btn mobile-action-btn" onClick={likeSong} title="Like">
-            <Heart size={18} />
+          <button className="control-btn mobile-action-btn" onClick={() => setShowPlaylistModal(true)} title="Add to Playlist">
+            <ListPlus size={20} />
           </button>
           <button className="control-btn mobile-action-btn" onClick={() => setShowQueue(true)} title="Queue">
             <ListMusic size={18} />
@@ -94,6 +87,9 @@ export default function Player() {
 
         {/* Desktop only: right side */}
         <div className="player-extra">
+          <button className="control-btn" onClick={() => setShowPlaylistModal(true)} title="Add to Playlist">
+            <ListPlus size={22} />
+          </button>
           <button className="control-btn" onClick={() => setShowQueue(true)} title="Queue">
             <ListMusic size={22} />
           </button>
@@ -101,6 +97,7 @@ export default function Player() {
       </div>
 
       {showQueue && <QueuePanel onClose={() => setShowQueue(false)} />}
+      {showPlaylistModal && <PlaylistModal song={currentSong} onClose={() => setShowPlaylistModal(false)} />}
     </>
   );
 }

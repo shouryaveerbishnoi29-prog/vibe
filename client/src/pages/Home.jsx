@@ -2,15 +2,21 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import BundleGrid from '../components/BundleGrid';
 
+// Simple session cache to prevent re-fetching on every tab switch
+let recommendationCache = null;
+
 export default function Home() {
-  const [cards, setCards] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [cards, setCards] = useState(recommendationCache || []);
+  const [loading, setLoading] = useState(!recommendationCache);
 
   useEffect(() => {
-    // Fetch user dynamic recommendations based on listen history
+    // If we already have recommendations cached for this session, don't fetch again
+    if (recommendationCache) return;
+
     axios.get('/api/recommendations')
       .then(res => {
          if (res.data.success && res.data.data.length > 0) {
+             recommendationCache = res.data.data;
              setCards(res.data.data);
          }
          setLoading(false);
@@ -36,7 +42,15 @@ export default function Home() {
           <p>Loading your mixes...</p>
       ) : (
           <div>
-            <h2>Made For You</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ margin: 0 }}>Made For You</h2>
+                <button 
+                  onClick={() => { recommendationCache = null; window.location.reload(); }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer' }}
+                >
+                  Refresh Mixes
+                </button>
+            </div>
             {cards.length > 0 ? (
                 <BundleGrid bundles={cards} />
             ) : (
